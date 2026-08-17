@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Нажми кнопку</title>
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://aplatonov2906-ai.github.io/bloom/">
+<meta property="og:title" content="Нажми кнопку ✨">
+<meta property="og:description" content="Открой и нажми «Запустить»">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; background: #05030a; overflow: hidden; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  #wrap { position: relative; width: 100%; height: 100%; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #start {
+    position: absolute; inset: 0; margin: auto; width: max-content; height: max-content;
+    padding: 18px 38px; border: 0; border-radius: 999px;
+    background: linear-gradient(135deg, #ffb066, #ff7ac1);
+    color: #2a0f1e; font-size: 20px; font-weight: 700; letter-spacing: .5px;
+    font-family: inherit; cursor: pointer; z-index: 3;
+    box-shadow: 0 10px 44px rgba(255, 150, 90, .55);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  #again {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    padding: 10px 22px; border: 1px solid #3b2a44; border-radius: 999px;
+    background: rgba(0,0,0,.35); color: #9a8ba6; font-size: 15px; font-family: inherit;
+    cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .5s; z-index: 3;
+  }
+  #again.show { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <button id="start">Запустить ✨</button>
+    <button id="again">ещё раз</button>
+  </div>
+
+<script>
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const startBtn = document.getElementById('start');
+const againBtn = document.getElementById('again');
+
+const WREATH_MS = 5200;    // росчерки собирают венок
+const BLOOM_MS  = 3800;    // раскрытие лотоса
+const STRANDS   = 9;
+
+let W, H, dpr, stars = [], sparks = [];
+
+function setup() {
+  const r = cv.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  stars = Array.from({ length: 90 }, () => ({
+    x: Math.random() * W, y: Math.random() * H * 0.85,
+    r: Math.random() * 1.4 + 0.3, p: Math.random() * 6.28, s: 0.7 + Math.random() * 1.6
+  }));
+}
+setup();
+
+// геометрия сцены
+const S  = () => Math.min(W, H * 0.9);          // «размер сцены»
+const CX = () => W / 2;
+const CY = () => H * 0.60;                      // основание цветка
+const R  = () => S() * 0.40;                    // радиус венка
+
+function background(t) {
+  const g = ctx.createRadialGradient(CX(), CY(), 0, CX(), CY(), S() * 0.95);
+  g.addColorStop(0, '#200d24');
+  g.addColorStop(0.45, '#120720');
+  g.addColorStop(1, '#05030a');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of stars) {
+    const a = 0.25 + 0.75 * Math.abs(Math.sin(t / 1000 * s.s + s.p));
+    ctx.fillStyle = `rgba(255,236,210,${a * 0.55})`;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.3); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+// точка на пряди венка: угол th (π..0 слева направо), прядь k
+function strandPt(th, k) {
+  const wob = 1 + 0.065 * Math.sin(th * (3 + k % 3) + k * 1.7) + 0.025 * Math.sin(th * 7 + k);
+  const rr = R() * wob * (0.82 + 0.04 * k);
+  return [CX() + Math.cos(th) * rr, CY() - Math.sin(th) * rr * 1.02];
+}
+
+// венок целиком на текущий прогресс p (0..1) — рисуется заново каждый кадр,
+// поэтому свечение не накапливается в кляксы
+function drawWreath(p) {
+  ctx.globalCompositeOperation = 'lighter';
+  const s = S();
+  for (let k = 0; k < STRANDS; k++) {
+    const lag = k * 0.045, dur = 0.52 + 0.05 * (k % 4);   // у каждой пряди свой темп
+    const a = Math.max(0, Math.min(1, (p - lag) / dur));
+    if (a <= 0) continue;
+    for (const dir of [1, -1]) {                 // две встречные ветви
+      const thA = dir > 0 ? Math.PI : 0;
+      const thB = dir > 0 ? Math.PI * (1 - a * 0.5) : Math.PI * a * 0.5;
+      const steps = Math.max(2, Math.round(90 * a));
+      ctx.beginPath();
+      ctx.moveTo(...strandPt(thA, k));
+      for (let i = 1; i <= steps; i++) ctx.lineTo(...strandPt(thA + (thB - thA) * i / steps, k));
+      ctx.strokeStyle = `rgba(255,${168 + k * 9},${96 + k * 13},0.42)`;
+      ctx.lineWidth = Math.max(1, s * 0.0028);
+      ctx.shadowColor = 'rgba(255,165,75,0.85)';
+      ctx.shadowBlur = s * 0.018;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      if (a < 1) {                               // яркая «голова» росчерка
+        const [hx, hy] = strandPt(thB, k);
+        const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, s * 0.015);
+        g.addColorStop(0, 'rgba(255,243,214,0.8)');
+        g.addColorStop(1, 'rgba(255,170,80,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(hx, hy, s * 0.015, 0, 6.3); ctx.fill();
+        if (Math.random() < 0.35) sparks.push({ x: hx, y: hy, vx: (Math.random() - .5) * .5,
+          vy: (Math.random() - .5) * .5 - .15, life: 1, r: Math.random() * 1.6 + .6 });
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+// один лепесток: основание в (0,0), кончик вверх
+function petal(len, wid, hue, edge) {
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(-wid, -len * 0.35, -wid * 0.78, -len * 0.82, 0, -len);
+  ctx.bezierCurveTo(wid * 0.78, -len * 0.82, wid, -len * 0.35, 0, 0);
+  const g = ctx.createLinearGradient(0, 0, 0, -len);
+  g.addColorStop(0, `hsla(${hue}, 88%, 58%, 0.30)`);
+  g.addColorStop(0.55, `hsla(${hue + 10}, 100%, 78%, 0.20)`);
+  g.addColorStop(1, 'rgba(255,255,255,0.30)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(${edge},0.5)`;
+  ctx.lineWidth = Math.max(0.8, S() * 0.002);
+  ctx.shadowColor = `hsla(${hue}, 100%, 72%, 0.75)`;
+  ctx.shadowBlur = S() * 0.018;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+const ROWS = [
+  { n: 11, spread: 1.78, len: 0.47, wid: 0.086, hue: 318, delay: 0.00, tilt: 0.96, edge: '170,228,255' },
+  { n:  9, spread: 1.44, len: 0.385, wid: 0.078, hue: 335, delay: 0.22, tilt: 0.80, edge: '210,235,255' },
+  { n:  7, spread: 1.06, len: 0.285, wid: 0.068, hue: 350, delay: 0.42, tilt: 0.60, edge: '255,225,240' },
+];
+
+function flower(prog, t) {                       // prog 0..1 — раскрытие
+  ctx.globalCompositeOperation = 'lighter';
+  const s = S();
+  for (const row of ROWS) {
+    const rp = Math.min(1, Math.max(0, (prog - row.delay) / 0.58));
+    if (rp <= 0) continue;
+    const e = 1 - Math.pow(1 - rp, 3);           // easeOutCubic
+    for (let i = 0; i < row.n; i++) {
+      const f = row.n === 1 ? 0 : (i / (row.n - 1)) * 2 - 1;   // -1..1
+      const open = e * (0.35 + 0.65 * (1 - Math.abs(f) * 0.25));
+      const ang = f * row.spread * open * row.tilt;
+      const len = s * row.len * (0.45 + 0.55 * e);
+      const breathe = 1 + 0.012 * Math.sin(t / 900 + i);
+      ctx.save();
+      ctx.translate(CX(), CY());
+      ctx.rotate(ang);
+      ctx.scale(breathe, breathe);
+      ctx.globalAlpha = 0.55 + 0.45 * e;
+      petal(len, s * row.wid * (0.6 + 0.4 * e), row.hue + f * 12, row.edge);
+      ctx.restore();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // сердцевина
+  const core = s * 0.055 * (0.3 + 0.7 * prog) * (1 + 0.05 * Math.sin(t / 700));
+  const g = ctx.createRadialGradient(CX(), CY() - core * 0.6, 0, CX(), CY() - core * 0.6, core * 3.4);
+  g.addColorStop(0, 'rgba(255,244,224,0.72)');
+  g.addColorStop(0.32, 'rgba(255,186,132,0.30)');
+  g.addColorStop(1, 'rgba(255,120,90,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(CX(), CY() - core * 0.6, core * 3, 0, 6.3); ctx.fill();
+
+  if (prog > 0.55) {                             // тычинки
+    const n = 14, a = (prog - 0.55) / 0.45;
+    for (let i = 0; i < n; i++) {
+      const th = -Math.PI / 2 + (i / (n - 1) - 0.5) * 1.7;
+      const L = s * 0.075 * a;
+      ctx.strokeStyle = `rgba(255,214,150,${0.55 * a})`;
+      ctx.lineWidth = Math.max(0.8, s * 0.0018);
+      ctx.beginPath();
+      ctx.moveTo(CX(), CY() - core * 0.2);
+      ctx.lineTo(CX() + Math.cos(th) * L * 1.2, CY() - core * 0.2 + Math.sin(th) * L);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,240,190,${0.8 * a})`;
+      ctx.beginPath();
+      ctx.arc(CX() + Math.cos(th) * L * 1.2, CY() - core * 0.2 + Math.sin(th) * L, s * 0.004, 0, 6.3);
+      ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function updateSparks(dt) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of sparks) {
+    p.x += p.vx; p.y += p.vy; p.vy -= 0.004; p.life -= dt / 1400;
+    if (p.life <= 0) continue;
+    ctx.fillStyle = `rgba(255,225,170,${p.life * 0.8})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, 6.3); ctx.fill();
+  }
+  sparks = sparks.filter(p => p.life > 0).slice(-260);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+let raf = null, t0 = 0, prevT = 0;
+// стоп-кадр на заданной миллисекунде — только для отладки
+window.__freeze = ms => {
+  cancelAnimationFrame(raf);
+  sparks = [];
+  t0 = 0;
+  const now = performance.now();
+  background(now);
+  drawWreath(Math.min(1, ms / WREATH_MS));
+  const bloom = Math.min(1, Math.max(0, (ms - WREATH_MS * 0.82) / BLOOM_MS));
+  if (bloom > 0) flower(bloom, now);
+  return { ms, bloom: +bloom.toFixed(2) };
+};
+
+function frame(now) {
+  const t = now - t0, dt = Math.min(50, now - prevT || 16);
+  prevT = now;
+
+  background(now);
+  drawWreath(Math.min(1, t / WREATH_MS));
+
+  const bloom = Math.min(1, Math.max(0, (t - WREATH_MS * 0.82) / BLOOM_MS));
+  if (bloom > 0) {
+    flower(bloom, now);
+    if (bloom < 1 && Math.random() < 0.5) {
+      const a = Math.random() * 6.3, rr = S() * 0.12 * Math.random();
+      sparks.push({ x: CX() + Math.cos(a) * rr, y: CY() + Math.sin(a) * rr * 0.6,
+        vx: (Math.random() - .5) * .4, vy: -Math.random() * .5 - .1,
+        life: 1, r: Math.random() * 1.8 + .5 });
+    }
+  }
+  if (bloom >= 1 && Math.random() < 0.12) {      // тихое мерцание после раскрытия
+    sparks.push({ x: CX() + (Math.random() - .5) * S() * 0.7, y: CY() - Math.random() * S() * 0.3,
+      vx: (Math.random() - .5) * .2, vy: -Math.random() * .35 - .05,
+      life: 1, r: Math.random() * 1.5 + .4 });
+  }
+  updateSparks(dt);
+
+  if (bloom >= 1) againBtn.classList.add('show');
+  raf = requestAnimationFrame(frame);
+}
+
+function run() {
+  cancelAnimationFrame(raf);
+  sparks = [];
+  againBtn.classList.remove('show');
+  t0 = performance.now(); prevT = t0;
+  raf = requestAnimationFrame(frame);
+}
+
+addEventListener('resize', () => { setup(); if (t0) run(); });
+startBtn.addEventListener('click', () => { startBtn.style.display = 'none'; run(); });
+againBtn.addEventListener('click', run);
+
+background(0);   // тёмный фон со звёздами до нажатия
+</script>
+</body>
+</html>

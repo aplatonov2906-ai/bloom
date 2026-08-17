@@ -10,25 +10,23 @@
 <meta property="og:description" content="Открой и нажми «Запустить»">
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; margin: 0; background: #05030a; overflow: hidden; }
-  body {
-    display: flex; align-items: center; justify-content: center;
-    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-  }
+  html, body { height: 100%; margin: 0; background: #04030a; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center;
+         font-family: "Segoe UI", system-ui, -apple-system, sans-serif; }
   #wrap { position: relative; width: 100%; height: 100%; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   #start {
     position: absolute; inset: 0; margin: auto; width: max-content; height: max-content;
     padding: 18px 38px; border: 0; border-radius: 999px;
-    background: linear-gradient(135deg, #ffb066, #ff7ac1);
+    background: linear-gradient(135deg, #ffc07a, #ff8ac4);
     color: #2a0f1e; font-size: 20px; font-weight: 700; letter-spacing: .5px;
     font-family: inherit; cursor: pointer; z-index: 3;
-    box-shadow: 0 10px 44px rgba(255, 150, 90, .55);
+    box-shadow: 0 10px 44px rgba(255, 160, 100, .55);
     animation: pulse 1.8s ease-in-out infinite;
   }
   @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
   #again {
-    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
     padding: 10px 22px; border: 1px solid #3b2a44; border-radius: 999px;
     background: rgba(0,0,0,.35); color: #9a8ba6; font-size: 15px; font-family: inherit;
     cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .5s; z-index: 3;
@@ -49,11 +47,16 @@ const ctx = cv.getContext('2d');
 const startBtn = document.getElementById('start');
 const againBtn = document.getElementById('again');
 
-const WREATH_MS = 5200;    // росчерки собирают венок
-const BLOOM_MS  = 3800;    // раскрытие лотоса
-const STRANDS   = 9;
+const WREATH_MS = 5400;
+const BLOOM_MS  = 4200;
+const STRANDS   = 11;
 
-let W, H, dpr, stars = [], sparks = [];
+let W, H, dpr, stars = [], sparks = [], twinkles = [];
+
+function rnd(seed) {                       // детерминированный шум — узор не «дрожит»
+  const x = Math.sin(seed * 127.1) * 43758.5453;
+  return x - Math.floor(x);
+}
 
 function setup() {
   const r = cv.getBoundingClientRect();
@@ -61,210 +64,338 @@ function setup() {
   W = r.width; H = r.height;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  stars = Array.from({ length: 90 }, () => ({
-    x: Math.random() * W, y: Math.random() * H * 0.85,
-    r: Math.random() * 1.4 + 0.3, p: Math.random() * 6.28, s: 0.7 + Math.random() * 1.6
+  stars = Array.from({ length: 110 }, (_, i) => ({
+    x: rnd(i + 1) * W, y: rnd(i + 40) * H * 0.9,
+    r: rnd(i + 90) * 1.3 + 0.3, p: rnd(i + 7) * 6.28, s: 0.6 + rnd(i + 3) * 1.6
   }));
 }
 setup();
 
-// геометрия сцены
-const S  = () => Math.min(W, H * 0.9);          // «размер сцены»
+const S  = () => Math.min(W, H * 0.9);
 const CX = () => W / 2;
-const CY = () => H * 0.60;                      // основание цветка
-const R  = () => S() * 0.40;                    // радиус венка
+const CY = () => H * 0.585;
+const R  = () => S() * 0.44;
 
+/* ---------- фон ---------- */
 function background(t) {
-  const g = ctx.createRadialGradient(CX(), CY(), 0, CX(), CY(), S() * 0.95);
-  g.addColorStop(0, '#200d24');
-  g.addColorStop(0.45, '#120720');
-  g.addColorStop(1, '#05030a');
+  const g = ctx.createRadialGradient(CX(), CY(), 0, CX(), CY(), S());
+  g.addColorStop(0, '#22102b');
+  g.addColorStop(0.5, '#100820');
+  g.addColorStop(1, '#04030a');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
   ctx.globalCompositeOperation = 'lighter';
   for (const s of stars) {
-    const a = 0.25 + 0.75 * Math.abs(Math.sin(t / 1000 * s.s + s.p));
-    ctx.fillStyle = `rgba(255,236,210,${a * 0.55})`;
+    const a = 0.2 + 0.8 * Math.abs(Math.sin(t / 1000 * s.s + s.p));
+    ctx.fillStyle = `rgba(255,238,214,${a * 0.5})`;
     ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.3); ctx.fill();
   }
   ctx.globalCompositeOperation = 'source-over';
 }
 
-// точка на пряди венка: угол th (π..0 слева направо), прядь k
-function strandPt(th, k) {
-  const wob = 1 + 0.065 * Math.sin(th * (3 + k % 3) + k * 1.7) + 0.025 * Math.sin(th * 7 + k);
-  const rr = R() * wob * (0.82 + 0.04 * k);
-  return [CX() + Math.cos(th) * rr, CY() - Math.sin(th) * rr * 1.02];
+/* ---------- неоновый штрих: широкий тусклый + средний + яркая сердцевина ---------- */
+function neon(pathFn, w, warm) {
+  const passes = warm
+    ? [[w * 5.0, 'rgba(255,110,20,0.045)'], [w * 3.0, 'rgba(255,150,50,0.09)'],
+       [w * 1.8, 'rgba(255,186,104,0.20)'], [w * 1.0, 'rgba(255,222,166,0.55)'],
+       [w * 0.44, 'rgba(255,250,232,0.95)']]
+    : [[w * 3.6, 'rgba(255,120,180,0.020)'], [w * 2.2, 'rgba(255,170,215,0.038)'],
+       [w * 1.3, 'rgba(255,205,232,0.075)'], [w * 0.8, 'rgba(255,232,246,0.17)'],
+       [w * 0.34, 'rgba(255,250,252,0.42)']];
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const [lw, col] of passes) {
+    ctx.lineWidth = Math.max(0.4, lw);
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    pathFn();
+    ctx.stroke();
+  }
 }
 
-// венок целиком на текущий прогресс p (0..1) — рисуется заново каждый кадр,
-// поэтому свечение не накапливается в кляксы
-function drawWreath(p) {
+function starSpark(x, y, r, a) {
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6);
+  g.addColorStop(0, `rgba(255,247,225,${a})`);
+  g.addColorStop(1, 'rgba(255,170,80,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r * 2.6, 0, 6.3); ctx.fill();
+  ctx.strokeStyle = `rgba(255,250,235,${a * 0.9})`;
+  ctx.lineWidth = Math.max(0.5, r * 0.22);
+  ctx.beginPath();
+  ctx.moveTo(x - r * 2.2, y); ctx.lineTo(x + r * 2.2, y);
+  ctx.moveTo(x, y - r * 2.2); ctx.lineTo(x, y + r * 2.2);
+  ctx.stroke();
+}
+
+/* ---------- венок из жгутов ---------- */
+function strandPt(th, k) {
+  const wob = 1 + 0.055 * Math.sin(th * (2 + k % 3) + k * 1.9)
+                + 0.026 * Math.sin(th * 5.5 + k * 0.7)
+                + 0.014 * Math.sin(th * 11 + k);
+  // не пускаем жгуты внутрь — цветок должен оставаться в «окне» венка
+  const rr = R() * Math.max(0.86, wob) * (0.84 + 0.020 * k);
+  return [CX() + Math.cos(th) * rr, CY() - Math.sin(th) * rr * 1.0];
+}
+
+// завиток-улитка: раскручивается от точки крепления и стягивается к центру
+function tendril(x, y, ang, size, grow, flip) {
+  const cx = x + Math.cos(ang) * size, cy = y + Math.sin(ang) * size;
+  neon(() => {
+    ctx.moveTo(x, y);
+    for (let i = 1; i <= 30; i++) {
+      const u = (i / 30) * grow;
+      const th = ang + Math.PI + flip * 6.283 * 1.15 * u;
+      const rr = size * (1 - 0.82 * u);
+      ctx.lineTo(cx + Math.cos(th) * rr, cy + Math.sin(th) * rr);
+    }
+  }, size * 0.13, true);
+}
+
+function drawWreath(p, t) {
   ctx.globalCompositeOperation = 'lighter';
   const s = S();
   for (let k = 0; k < STRANDS; k++) {
-    const lag = k * 0.045, dur = 0.52 + 0.05 * (k % 4);   // у каждой пряди свой темп
+    const lag = k * 0.05, dur = 0.5 + 0.06 * (k % 4);
     const a = Math.max(0, Math.min(1, (p - lag) / dur));
     if (a <= 0) continue;
-    for (const dir of [1, -1]) {                 // две встречные ветви
+    for (const dir of [1, -1]) {
       const thA = dir > 0 ? Math.PI : 0;
-      const thB = dir > 0 ? Math.PI * (1 - a * 0.5) : Math.PI * a * 0.5;
-      const steps = Math.max(2, Math.round(90 * a));
-      ctx.beginPath();
-      ctx.moveTo(...strandPt(thA, k));
-      for (let i = 1; i <= steps; i++) ctx.lineTo(...strandPt(thA + (thB - thA) * i / steps, k));
-      ctx.strokeStyle = `rgba(255,${168 + k * 9},${96 + k * 13},0.42)`;
-      ctx.lineWidth = Math.max(1, s * 0.0028);
-      ctx.shadowColor = 'rgba(255,165,75,0.85)';
-      ctx.shadowBlur = s * 0.018;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      const thB = dir > 0 ? Math.PI * (1 - a * 0.52) : Math.PI * a * 0.52;
+      const steps = Math.max(3, Math.round(110 * a));
+      const w = s * (0.0052 + 0.0042 * rnd(k * 3 + (dir > 0 ? 1 : 2)));   // жгуты разной толщины
+      const CH = 3;                                                        // сужение к кончику
+      for (let ch = 0; ch < CH; ch++) {
+        const i0 = Math.floor(steps * ch / CH), i1 = Math.ceil(steps * (ch + 1) / CH);
+        neon(() => {
+          ctx.moveTo(...strandPt(thA + (thB - thA) * i0 / steps, k));
+          for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(...strandPt(thA + (thB - thA) * i / steps, k));
+        }, w * (1 - 0.42 * ch / (CH - 1)), true);
+      }
 
-      if (a < 1) {                               // яркая «голова» росчерка
+      if (a > 0.12 && k % 3 !== 2) {                  // завиток на «хвосте» жгута
+        tendril(...strandPt(thA, k), dir > 0 ? 1.9 : 1.25,
+                s * (0.032 + 0.014 * rnd(k * 11 + dir)), Math.min(1, (a - 0.12) * 3),
+                k % 2 ? 1 : -1);
+      }
+      if (k % 2 === 0) {                              // завитки — не на каждом жгуте
+        const ts = 0.30 + 0.28 * rnd(k + (dir > 0 ? 0 : 9));
+        if (a > ts) {
+          const grow = Math.min(1, (a - ts) * 4);
+          const th = thA + (thB - thA) * (ts / a);
+          const [tx, ty] = strandPt(th, k);
+          const ang = dir > 0 ? -1.15 - k * 0.1 : 1.15 + k * 0.1;
+          tendril(tx, ty, ang, s * (0.055 + 0.02 * rnd(k * 7)), grow,
+                  (k + (dir > 0 ? 0 : 1)) % 2 ? 1 : -1);
+        }
+      }
+
+      if (a < 1) {
         const [hx, hy] = strandPt(thB, k);
-        const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, s * 0.015);
-        g.addColorStop(0, 'rgba(255,243,214,0.8)');
-        g.addColorStop(1, 'rgba(255,170,80,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(hx, hy, s * 0.015, 0, 6.3); ctx.fill();
-        if (Math.random() < 0.35) sparks.push({ x: hx, y: hy, vx: (Math.random() - .5) * .5,
-          vy: (Math.random() - .5) * .5 - .15, life: 1, r: Math.random() * 1.6 + .6 });
+        starSpark(hx, hy, s * 0.011, 0.85);
+        if (Math.random() < 0.4) sparks.push({ x: hx, y: hy, vx: (Math.random() - .5) * .5,
+          vy: (Math.random() - .5) * .5 - .12, life: 1, r: Math.random() * 1.5 + .5 });
+      } else if (rnd(k * 5 + dir) > 0.72) {           // редкие искры на готовом венке
+        const th = thA + (thB - thA) * (0.35 + 0.3 * rnd(k + dir));
+        const [sx, sy] = strandPt(th, k);
+        starSpark(sx, sy, s * 0.005, 0.18 + 0.18 * Math.abs(Math.sin(t / 700 + k)));
       }
     }
   }
   ctx.globalCompositeOperation = 'source-over';
 }
 
-// один лепесток: основание в (0,0), кончик вверх
-function petal(len, wid, hue, edge) {
-  ctx.beginPath();
+/* ---------- лепесток ---------- */
+function petalPath(len, wid) {
   ctx.moveTo(0, 0);
-  ctx.bezierCurveTo(-wid, -len * 0.35, -wid * 0.78, -len * 0.82, 0, -len);
-  ctx.bezierCurveTo(wid * 0.78, -len * 0.82, wid, -len * 0.35, 0, 0);
+  ctx.bezierCurveTo(-wid, -len * 0.30, -wid * 0.86, -len * 0.74, 0, -len);
+  ctx.bezierCurveTo(wid * 0.86, -len * 0.74, wid, -len * 0.30, 0, 0);
+}
+
+function petal(len, wid, hue, seed, showDetail) {
+  // тело лепестка — полупрозрачное, БЕЗ аддитива, чтобы не выжигалось в белое
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.beginPath(); petalPath(len, wid);
   const g = ctx.createLinearGradient(0, 0, 0, -len);
-  g.addColorStop(0, `hsla(${hue}, 88%, 58%, 0.30)`);
-  g.addColorStop(0.55, `hsla(${hue + 10}, 100%, 78%, 0.20)`);
-  g.addColorStop(1, 'rgba(255,255,255,0.30)');
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.strokeStyle = `rgba(${edge},0.5)`;
-  ctx.lineWidth = Math.max(0.8, S() * 0.002);
-  ctx.shadowColor = `hsla(${hue}, 100%, 72%, 0.75)`;
-  ctx.shadowBlur = S() * 0.018;
+  g.addColorStop(0,    `hsla(${hue},      88%, 60%, 0.46)`);
+  g.addColorStop(0.5,  `hsla(${hue + 16}, 95%, 74%, 0.26)`);
+  g.addColorStop(1,    'rgba(255,240,250,0.12)');
+  ctx.fillStyle = g; ctx.fill();
+
+  if (showDetail) {                                  // перламутр внутри лепестка
+    ctx.save(); ctx.clip();
+    ctx.globalCompositeOperation = 'lighter';
+    const bx = (rnd(seed) - 0.5) * wid * 0.8, by = -len * (0.34 + 0.28 * rnd(seed + 5));
+    for (const [dx, dy, col, rad] of [
+      [bx, by, 'rgba(110,200,255,0.20)', wid * 0.9],
+      [-bx * 0.7, by - len * 0.2, 'rgba(196,150,255,0.16)', wid * 0.75],
+    ]) {
+      const bg = ctx.createRadialGradient(dx, dy, 0, dx, dy, rad);
+      bg.addColorStop(0, col); bg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.arc(dx, dy, rad, 0, 6.3); ctx.fill();
+    }
+    // прожилки
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = 'rgba(255,232,246,0.16)';
+    ctx.lineWidth = Math.max(0.4, len * 0.005);
+    for (const o of [-0.45, 0, 0.45]) {
+      ctx.beginPath();
+      ctx.moveTo(0, -len * 0.04);
+      ctx.quadraticCurveTo(o * wid, -len * 0.55, 0, -len * 0.94);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // кромка: мягкое свечение + тонкая чёткая линия
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineJoin = 'round';
+  ctx.beginPath(); petalPath(len, wid);
+  ctx.strokeStyle = `hsla(${hue + 10}, 100%, 78%, 0.10)`;
+  ctx.lineWidth = Math.max(1.2, len * 0.030);
   ctx.stroke();
-  ctx.shadowBlur = 0;
+  ctx.beginPath(); petalPath(len, wid);
+  ctx.strokeStyle = 'rgba(255,226,178,0.68)';        // тёплая золотистая кромка
+  ctx.lineWidth = Math.max(0.7, len * 0.008);
+  ctx.stroke();
+
+  // мягкий огонёк на кончике (без лучей — они читались как «крестики»)
+  const tg = ctx.createRadialGradient(0, -len, 0, 0, -len, len * 0.075);
+  tg.addColorStop(0, 'rgba(255,246,226,0.55)');
+  tg.addColorStop(0.4, 'rgba(255,205,160,0.18)');
+  tg.addColorStop(1, 'rgba(255,170,120,0)');
+  ctx.fillStyle = tg;
+  ctx.beginPath(); ctx.arc(0, -len, len * 0.075, 0, 6.3); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 const ROWS = [
-  { n: 11, spread: 1.78, len: 0.47, wid: 0.086, hue: 318, delay: 0.00, tilt: 0.96, edge: '170,228,255' },
-  { n:  9, spread: 1.44, len: 0.385, wid: 0.078, hue: 335, delay: 0.22, tilt: 0.80, edge: '210,235,255' },
-  { n:  7, spread: 1.06, len: 0.285, wid: 0.068, hue: 350, delay: 0.42, tilt: 0.60, edge: '255,225,240' },
+  { n: 11, spread: 1.60, len: 0.330, wid: 0.090, hue: 312, delay: 0.00, tilt: 1.00 },
+  { n:  9, spread: 1.28, len: 0.278, wid: 0.080, hue: 326, delay: 0.18, tilt: 0.86 },
+  { n:  7, spread: 0.96, len: 0.222, wid: 0.070, hue: 338, delay: 0.34, tilt: 0.70 },
+  { n:  5, spread: 0.64, len: 0.166, wid: 0.058, hue: 350, delay: 0.50, tilt: 0.52 },
 ];
 
-function flower(prog, t) {                       // prog 0..1 — раскрытие
+function flower(prog, t) {
   ctx.globalCompositeOperation = 'lighter';
   const s = S();
-  for (const row of ROWS) {
-    const rp = Math.min(1, Math.max(0, (prog - row.delay) / 0.58));
+
+  for (let ri = 0; ri < ROWS.length; ri++) {
+    const row = ROWS[ri];
+    const rp = Math.min(1, Math.max(0, (prog - row.delay) / 0.5));
     if (rp <= 0) continue;
-    const e = 1 - Math.pow(1 - rp, 3);           // easeOutCubic
+    const e = 1 - Math.pow(1 - rp, 3);
     for (let i = 0; i < row.n; i++) {
-      const f = row.n === 1 ? 0 : (i / (row.n - 1)) * 2 - 1;   // -1..1
-      const open = e * (0.35 + 0.65 * (1 - Math.abs(f) * 0.25));
+      const f = (i / (row.n - 1)) * 2 - 1;
+      const open = e * (0.34 + 0.66 * (1 - Math.abs(f) * 0.22));
       const ang = f * row.spread * open * row.tilt;
-      const len = s * row.len * (0.45 + 0.55 * e);
-      const breathe = 1 + 0.012 * Math.sin(t / 900 + i);
+      const len = s * row.len * (0.42 + 0.58 * e);
+      const breathe = 1 + 0.01 * Math.sin(t / 1100 + i * 0.6 + ri);
       ctx.save();
       ctx.translate(CX(), CY());
       ctx.rotate(ang);
       ctx.scale(breathe, breathe);
-      ctx.globalAlpha = 0.55 + 0.45 * e;
-      petal(len, s * row.wid * (0.6 + 0.4 * e), row.hue + f * 12, row.edge);
+      ctx.globalAlpha = 0.5 + 0.5 * e;
+      petal(len, s * row.wid * (0.55 + 0.45 * e), row.hue + f * 14, ri * 20 + i, e > 0.35);
       ctx.restore();
     }
   }
   ctx.globalAlpha = 1;
 
-  // сердцевина
-  const core = s * 0.055 * (0.3 + 0.7 * prog) * (1 + 0.05 * Math.sin(t / 700));
-  const g = ctx.createRadialGradient(CX(), CY() - core * 0.6, 0, CX(), CY() - core * 0.6, core * 3.4);
-  g.addColorStop(0, 'rgba(255,244,224,0.72)');
-  g.addColorStop(0.32, 'rgba(255,186,132,0.30)');
-  g.addColorStop(1, 'rgba(255,120,90,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(CX(), CY() - core * 0.6, core * 3, 0, 6.3); ctx.fill();
-
-  if (prog > 0.55) {                             // тычинки
-    const n = 14, a = (prog - 0.55) / 0.45;
+  // тычинки
+  if (prog > 0.55) {
+    const a = (prog - 0.55) / 0.45, n = 30;
     for (let i = 0; i < n; i++) {
-      const th = -Math.PI / 2 + (i / (n - 1) - 0.5) * 1.7;
-      const L = s * 0.075 * a;
-      ctx.strokeStyle = `rgba(255,214,150,${0.55 * a})`;
-      ctx.lineWidth = Math.max(0.8, s * 0.0018);
-      ctx.beginPath();
-      ctx.moveTo(CX(), CY() - core * 0.2);
-      ctx.lineTo(CX() + Math.cos(th) * L * 1.2, CY() - core * 0.2 + Math.sin(th) * L);
-      ctx.stroke();
-      ctx.fillStyle = `rgba(255,240,190,${0.8 * a})`;
-      ctx.beginPath();
-      ctx.arc(CX() + Math.cos(th) * L * 1.2, CY() - core * 0.2 + Math.sin(th) * L, s * 0.004, 0, 6.3);
-      ctx.fill();
+      const th = -Math.PI / 2 + (i / (n - 1) - 0.5) * 2.0;
+      const L = s * 0.10 * a * (0.7 + 0.3 * rnd(i + 11));
+      const ex = CX() + Math.cos(th) * L * 1.15, ey = CY() - s * 0.012 + Math.sin(th) * L;
+      ctx.strokeStyle = `rgba(255,206,132,${0.5 * a})`;
+      ctx.lineWidth = Math.max(0.5, s * 0.0016);
+      ctx.beginPath(); ctx.moveTo(CX(), CY() - s * 0.012); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.fillStyle = `rgba(255,240,196,${0.85 * a})`;
+      ctx.beginPath(); ctx.arc(ex, ey, s * 0.0035, 0, 6.3); ctx.fill();
     }
   }
+
+  // тёплое ядро
+  const core = s * 0.05 * (0.3 + 0.7 * prog) * (1 + 0.05 * Math.sin(t / 700));
+  const cg = ctx.createRadialGradient(CX(), CY() - core, 0, CX(), CY() - core, core * 3.6);
+  cg.addColorStop(0, 'rgba(255,246,226,0.42)');
+  cg.addColorStop(0.3, 'rgba(255,192,132,0.16)');
+  cg.addColorStop(1, 'rgba(255,120,90,0)');
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.arc(CX(), CY() - core, core * 3.6, 0, 6.3); ctx.fill();
+
+  // чашечка снизу + короткий стебель
+  if (prog > 0.35) {
+    const a = Math.min(1, (prog - 0.35) / 0.4);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath();
+    ctx.moveTo(CX() - s * 0.055, CY() + s * 0.004);
+    ctx.quadraticCurveTo(CX(), CY() + s * 0.055 * a, CX() + s * 0.055, CY() + s * 0.004);
+    ctx.quadraticCurveTo(CX(), CY() - s * 0.012, CX() - s * 0.055, CY() + s * 0.004);
+    const bg = ctx.createLinearGradient(0, CY() - s * 0.01, 0, CY() + s * 0.05);
+    bg.addColorStop(0, 'rgba(255,214,236,0.28)');
+    bg.addColorStop(1, 'rgba(255,150,120,0.12)');
+    ctx.fillStyle = bg; ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(255,236,208,0.5)';
+    ctx.lineWidth = Math.max(0.7, s * 0.0022);
+    ctx.stroke();
+    neon(() => {
+      ctx.moveTo(CX(), CY() + s * 0.042 * a);
+      ctx.lineTo(CX(), CY() + s * 0.072 * a);
+    }, s * 0.0026, true);
+  }
+
+  // тёплое сияние у основания
+  const fg = ctx.createRadialGradient(CX(), CY() + s * 0.02, 0, CX(), CY() + s * 0.02, s * 0.3);
+  fg.addColorStop(0, `rgba(255,190,150,${0.12 * prog})`);
+  fg.addColorStop(1, 'rgba(255,150,120,0)');
+  ctx.fillStyle = fg;
+  ctx.beginPath(); ctx.arc(CX(), CY() + s * 0.02, s * 0.3, 0, 6.3); ctx.fill();
   ctx.globalCompositeOperation = 'source-over';
 }
 
 function updateSparks(dt) {
   ctx.globalCompositeOperation = 'lighter';
   for (const p of sparks) {
-    p.x += p.vx; p.y += p.vy; p.vy -= 0.004; p.life -= dt / 1400;
+    p.x += p.vx; p.y += p.vy; p.vy -= 0.004; p.life -= dt / 1500;
     if (p.life <= 0) continue;
-    ctx.fillStyle = `rgba(255,225,170,${p.life * 0.8})`;
+    ctx.fillStyle = `rgba(255,228,178,${p.life * 0.75})`;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, 6.3); ctx.fill();
   }
-  sparks = sparks.filter(p => p.life > 0).slice(-260);
+  sparks = sparks.filter(p => p.life > 0).slice(-240);
   ctx.globalCompositeOperation = 'source-over';
 }
 
 let raf = null, t0 = 0, prevT = 0;
-// стоп-кадр на заданной миллисекунде — только для отладки
-window.__freeze = ms => {
-  cancelAnimationFrame(raf);
-  sparks = [];
-  t0 = 0;
-  const now = performance.now();
+
+function render(t, now) {
   background(now);
-  drawWreath(Math.min(1, ms / WREATH_MS));
-  const bloom = Math.min(1, Math.max(0, (ms - WREATH_MS * 0.82) / BLOOM_MS));
+  drawWreath(Math.min(1, t / WREATH_MS), now);
+  const bloom = Math.min(1, Math.max(0, (t - WREATH_MS * 0.80) / BLOOM_MS));
   if (bloom > 0) flower(bloom, now);
-  return { ms, bloom: +bloom.toFixed(2) };
-};
+  return bloom;
+}
 
 function frame(now) {
-  const t = now - t0, dt = Math.min(50, now - prevT || 16);
+  const dt = Math.min(50, now - prevT || 16);
   prevT = now;
+  const t = now - t0;
+  const bloom = render(t, now);
 
-  background(now);
-  drawWreath(Math.min(1, t / WREATH_MS));
-
-  const bloom = Math.min(1, Math.max(0, (t - WREATH_MS * 0.82) / BLOOM_MS));
-  if (bloom > 0) {
-    flower(bloom, now);
-    if (bloom < 1 && Math.random() < 0.5) {
-      const a = Math.random() * 6.3, rr = S() * 0.12 * Math.random();
-      sparks.push({ x: CX() + Math.cos(a) * rr, y: CY() + Math.sin(a) * rr * 0.6,
-        vx: (Math.random() - .5) * .4, vy: -Math.random() * .5 - .1,
-        life: 1, r: Math.random() * 1.8 + .5 });
-    }
+  if (bloom > 0 && bloom < 1 && Math.random() < 0.5) {
+    const a = Math.random() * 6.3, rr = S() * 0.12 * Math.random();
+    sparks.push({ x: CX() + Math.cos(a) * rr, y: CY() + Math.sin(a) * rr * 0.6,
+      vx: (Math.random() - .5) * .4, vy: -Math.random() * .5 - .1, life: 1, r: Math.random() * 1.8 + .5 });
   }
-  if (bloom >= 1 && Math.random() < 0.12) {      // тихое мерцание после раскрытия
-    sparks.push({ x: CX() + (Math.random() - .5) * S() * 0.7, y: CY() - Math.random() * S() * 0.3,
-      vx: (Math.random() - .5) * .2, vy: -Math.random() * .35 - .05,
-      life: 1, r: Math.random() * 1.5 + .4 });
+  if (bloom >= 1 && Math.random() < 0.14) {
+    sparks.push({ x: CX() + (Math.random() - .5) * S() * 0.8, y: CY() - Math.random() * S() * 0.35,
+      vx: (Math.random() - .5) * .2, vy: -Math.random() * .35 - .05, life: 1, r: Math.random() * 1.4 + .4 });
   }
   updateSparks(dt);
-
   if (bloom >= 1) againBtn.classList.add('show');
   raf = requestAnimationFrame(frame);
 }
@@ -277,11 +408,16 @@ function run() {
   raf = requestAnimationFrame(frame);
 }
 
+window.__freeze = ms => {            // стоп-кадр для отладки
+  cancelAnimationFrame(raf); sparks = []; t0 = 0;
+  return { ms, bloom: +render(ms, performance.now()).toFixed(2) };
+};
+
 addEventListener('resize', () => { setup(); if (t0) run(); });
 startBtn.addEventListener('click', () => { startBtn.style.display = 'none'; run(); });
 againBtn.addEventListener('click', run);
 
-background(0);   // тёмный фон со звёздами до нажатия
+background(0);
 </script>
 </body>
 </html>

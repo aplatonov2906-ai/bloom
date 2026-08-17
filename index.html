@@ -152,8 +152,10 @@ function tendril(x, y, ang, size, grow, flip) {
   }, size * 0.13, true);
 }
 
-function drawWreath(p, t) {
+function drawWreath(p, t, fade) {
+  if (fade <= 0.01) return;                       // лоза растворяется, когда лотос раскрылся
   ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = fade;
   const s = S();
   for (let k = 0; k < STRANDS; k++) {
     const lag = k * 0.05, dur = 0.5 + 0.06 * (k % 4);
@@ -202,106 +204,134 @@ function drawWreath(p, t) {
       }
     }
   }
+  ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
 }
 
 /* ---------- лепесток ---------- */
-function petalPath(len, wid) {
+function petalPath(len, wid, curl = 0, round = 0.86) {
   ctx.moveTo(0, 0);
-  ctx.bezierCurveTo(-wid, -len * 0.30, -wid * 0.86, -len * 0.74, 0, -len);
-  ctx.bezierCurveTo(wid * 0.86, -len * 0.74, wid, -len * 0.30, 0, 0);
+  ctx.bezierCurveTo(-wid * (1 + curl), -len * 0.30, -wid * round, -len * 0.76, 0, -len);
+  ctx.bezierCurveTo(wid * round * (1 - curl * 0.6), -len * 0.76, wid * (1 - curl), -len * 0.30, 0, 0);
 }
 
-function petal(len, wid, hue, seed, showDetail) {
+function petal(len, wid, hue, seed, showDetail, round) {
+  const curl = (rnd(seed) - 0.5) * 0.22;             // лёгкая асимметрия — «живой» лепесток
+
   // тело лепестка — полупрозрачное, БЕЗ аддитива, чтобы не выжигалось в белое
   ctx.globalCompositeOperation = 'source-over';
-  ctx.beginPath(); petalPath(len, wid);
-  const g = ctx.createLinearGradient(0, 0, 0, -len);
-  g.addColorStop(0,    `hsla(${hue},      88%, 60%, 0.46)`);
-  g.addColorStop(0.5,  `hsla(${hue + 16}, 95%, 74%, 0.26)`);
-  g.addColorStop(1,    'rgba(255,240,250,0.12)');
+  ctx.beginPath(); petalPath(len, wid, curl, round);
+  const g = ctx.createLinearGradient(-wid * 0.4, 0, wid * 0.4, -len);
+  g.addColorStop(0,    `hsla(${hue - 6},  92%, 56%, 0.52)`);
+  g.addColorStop(0.35, `hsla(${hue + 10}, 96%, 68%, 0.34)`);
+  g.addColorStop(0.72, `hsla(${hue + 22}, 90%, 80%, 0.20)`);
+  g.addColorStop(1,    'rgba(255,244,252,0.10)');
   ctx.fillStyle = g; ctx.fill();
 
   if (showDetail) {                                  // перламутр внутри лепестка
     ctx.save(); ctx.clip();
     ctx.globalCompositeOperation = 'lighter';
-    const bx = (rnd(seed) - 0.5) * wid * 0.8, by = -len * (0.34 + 0.28 * rnd(seed + 5));
+    const bx = (rnd(seed) - 0.5) * wid * 0.7, by = -len * (0.32 + 0.26 * rnd(seed + 5));
     for (const [dx, dy, col, rad] of [
-      [bx, by, 'rgba(110,200,255,0.20)', wid * 0.9],
-      [-bx * 0.7, by - len * 0.2, 'rgba(196,150,255,0.16)', wid * 0.75],
+      [bx, by, 'rgba(105,205,255,0.26)', wid * 1.0],
+      [-bx * 0.8, by - len * 0.22, 'rgba(198,148,255,0.20)', wid * 0.8],
+      [bx * 0.5, -len * 0.80, 'rgba(255,214,170,0.20)', wid * 0.62],
     ]) {
       const bg = ctx.createRadialGradient(dx, dy, 0, dx, dy, rad);
       bg.addColorStop(0, col); bg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = bg;
       ctx.beginPath(); ctx.arc(dx, dy, rad, 0, 6.3); ctx.fill();
     }
+    // светлая «спинка» вдоль оси лепестка
+    const sg = ctx.createLinearGradient(0, 0, 0, -len);
+    sg.addColorStop(0, 'rgba(255,255,255,0)');
+    sg.addColorStop(0.55, 'rgba(255,246,255,0.16)');
+    sg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(-wid * 0.16, -len, wid * 0.32, len);
     // прожилки
     ctx.globalCompositeOperation = 'source-over';
-    ctx.strokeStyle = 'rgba(255,232,246,0.16)';
+    ctx.strokeStyle = 'rgba(255,232,246,0.18)';
     ctx.lineWidth = Math.max(0.4, len * 0.005);
-    for (const o of [-0.45, 0, 0.45]) {
+    for (const o of [-0.55, -0.28, 0.28, 0.55]) {
       ctx.beginPath();
-      ctx.moveTo(0, -len * 0.04);
-      ctx.quadraticCurveTo(o * wid, -len * 0.55, 0, -len * 0.94);
+      ctx.moveTo(0, -len * 0.03);
+      ctx.quadraticCurveTo(o * wid, -len * 0.55, 0, -len * 0.95);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  // кромка: мягкое свечение + тонкая чёткая линия
+  // кромка: мягкое свечение + чёткая линия, ярче к кончику
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineJoin = 'round';
-  ctx.beginPath(); petalPath(len, wid);
-  ctx.strokeStyle = `hsla(${hue + 10}, 100%, 78%, 0.10)`;
-  ctx.lineWidth = Math.max(1.2, len * 0.030);
+  ctx.beginPath(); petalPath(len, wid, curl, round);
+  ctx.strokeStyle = `hsla(${hue + 12}, 100%, 76%, 0.12)`;
+  ctx.lineWidth = Math.max(1.2, len * 0.034);
   ctx.stroke();
-  ctx.beginPath(); petalPath(len, wid);
-  ctx.strokeStyle = 'rgba(255,226,178,0.68)';        // тёплая золотистая кромка
-  ctx.lineWidth = Math.max(0.7, len * 0.008);
+  const rg = ctx.createLinearGradient(0, 0, 0, -len);
+  rg.addColorStop(0, 'rgba(255,190,130,0.30)');
+  rg.addColorStop(0.6, 'rgba(255,226,180,0.70)');
+  rg.addColorStop(1, 'rgba(255,250,235,0.95)');
+  ctx.beginPath(); petalPath(len, wid, curl, round);
+  ctx.strokeStyle = rg;
+  ctx.lineWidth = Math.max(0.7, len * 0.009);
   ctx.stroke();
 
-  // мягкий огонёк на кончике (без лучей — они читались как «крестики»)
+  // мягкий огонёк на кончике
   const tg = ctx.createRadialGradient(0, -len, 0, 0, -len, len * 0.075);
-  tg.addColorStop(0, 'rgba(255,246,226,0.55)');
-  tg.addColorStop(0.4, 'rgba(255,205,160,0.18)');
+  tg.addColorStop(0, 'rgba(255,248,232,0.42)');
+  tg.addColorStop(0.4, 'rgba(255,205,160,0.14)');
   tg.addColorStop(1, 'rgba(255,170,120,0)');
   ctx.fillStyle = tg;
-  ctx.beginPath(); ctx.arc(0, -len, len * 0.075, 0, 6.3); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -len, len * 0.085, 0, 6.3); ctx.fill();
   ctx.globalCompositeOperation = 'source-over';
 }
 
 const ROWS = [
-  { n: 11, spread: 1.60, len: 0.330, wid: 0.090, hue: 312, delay: 0.00, tilt: 1.00 },
-  { n:  9, spread: 1.28, len: 0.278, wid: 0.080, hue: 326, delay: 0.18, tilt: 0.86 },
-  { n:  7, spread: 0.96, len: 0.222, wid: 0.070, hue: 338, delay: 0.34, tilt: 0.70 },
-  { n:  5, spread: 0.64, len: 0.166, wid: 0.058, hue: 350, delay: 0.50, tilt: 0.52 },
+  { n: 13, spread: 1.66, len: 0.450, wid: 0.116, hue: 306, delay: 0.00, tilt: 1.00, round: 0.94, lift: 0.000 },
+  { n: 11, spread: 1.34, len: 0.388, wid: 0.107, hue: 318, delay: 0.14, tilt: 0.88, round: 0.90, lift: 0.014 },
+  { n:  9, spread: 1.04, len: 0.320, wid: 0.095, hue: 330, delay: 0.28, tilt: 0.74, round: 0.86, lift: 0.026 },
+  { n:  7, spread: 0.76, len: 0.252, wid: 0.082, hue: 342, delay: 0.42, tilt: 0.58, round: 0.80, lift: 0.038 },
+  { n:  5, spread: 0.50, len: 0.188, wid: 0.069, hue: 352, delay: 0.56, tilt: 0.42, round: 0.74, lift: 0.048 },
 ];
 
 function flower(prog, t) {
-  ctx.globalCompositeOperation = 'lighter';
   const s = S();
+
+  // тёплое сияние-ореол за цветком
+  ctx.globalCompositeOperation = 'lighter';
+  const halo = ctx.createRadialGradient(CX(), CY() - s * 0.10, 0, CX(), CY() - s * 0.10, s * 0.46);
+  halo.addColorStop(0, `rgba(255,170,215,${0.16 * prog})`);
+  halo.addColorStop(0.45, `rgba(190,120,255,${0.07 * prog})`);
+  halo.addColorStop(1, 'rgba(120,60,180,0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(CX(), CY() - s * 0.10, s * 0.46, 0, 6.3); ctx.fill();
 
   for (let ri = 0; ri < ROWS.length; ri++) {
     const row = ROWS[ri];
-    const rp = Math.min(1, Math.max(0, (prog - row.delay) / 0.5));
+    const rp = Math.min(1, Math.max(0, (prog - row.delay) / 0.44));
     if (rp <= 0) continue;
     const e = 1 - Math.pow(1 - rp, 3);
+    const half = ri % 2 ? 0.5 : 0;                     // ряды в шахматном порядке
     for (let i = 0; i < row.n; i++) {
-      const f = (i / (row.n - 1)) * 2 - 1;
+      const f = ((i + half) / (row.n - 1)) * 2 - 1 - half * 2 / (row.n - 1);
       const open = e * (0.34 + 0.66 * (1 - Math.abs(f) * 0.22));
       const ang = f * row.spread * open * row.tilt;
       const len = s * row.len * (0.42 + 0.58 * e);
-      const breathe = 1 + 0.01 * Math.sin(t / 1100 + i * 0.6 + ri);
+      const breathe = 1 + 0.012 * Math.sin(t / 1100 + i * 0.6 + ri);
       ctx.save();
-      ctx.translate(CX(), CY());
+      ctx.translate(CX(), CY() - s * row.lift * e);    // внутренние ряды чуть выше — объём
       ctx.rotate(ang);
-      ctx.scale(breathe, breathe);
-      ctx.globalAlpha = 0.5 + 0.5 * e;
-      petal(len, s * row.wid * (0.55 + 0.45 * e), row.hue + f * 14, ri * 20 + i, e > 0.35);
+      ctx.scale(breathe, breathe * 0.985);
+      ctx.globalAlpha = (0.5 + 0.5 * e) * (0.78 + 0.055 * ri);   // задние ряды глуше — глубина
+      petal(len, s * row.wid * (0.55 + 0.45 * e), row.hue + f * 14,
+            ri * 31 + i * 7, e > 0.3, row.round);
       ctx.restore();
     }
   }
   ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'lighter';
 
   // тычинки
   if (prog > 0.55) {
@@ -319,10 +349,10 @@ function flower(prog, t) {
   }
 
   // тёплое ядро
-  const core = s * 0.05 * (0.3 + 0.7 * prog) * (1 + 0.05 * Math.sin(t / 700));
+  const core = s * 0.038 * (0.3 + 0.7 * prog) * (1 + 0.05 * Math.sin(t / 700));
   const cg = ctx.createRadialGradient(CX(), CY() - core, 0, CX(), CY() - core, core * 3.6);
-  cg.addColorStop(0, 'rgba(255,246,226,0.42)');
-  cg.addColorStop(0.3, 'rgba(255,192,132,0.16)');
+  cg.addColorStop(0, 'rgba(255,238,212,0.26)');
+  cg.addColorStop(0.3, 'rgba(255,186,128,0.11)');
   cg.addColorStop(1, 'rgba(255,120,90,0)');
   ctx.fillStyle = cg;
   ctx.beginPath(); ctx.arc(CX(), CY() - core, core * 3.6, 0, 6.3); ctx.fill();
@@ -374,8 +404,10 @@ let raf = null, t0 = 0, prevT = 0;
 
 function render(t, now) {
   background(now);
-  drawWreath(Math.min(1, t / WREATH_MS), now);
   const bloom = Math.min(1, Math.max(0, (t - WREATH_MS * 0.80) / BLOOM_MS));
+  // лоза тает по мере раскрытия и к концу исчезает совсем — как в референсе
+  const u = Math.min(1, Math.max(0, (bloom - 0.45) / 0.5));
+  drawWreath(Math.min(1, t / WREATH_MS), now, 1 - u * u * (3 - 2 * u));
   if (bloom > 0) flower(bloom, now);
   return bloom;
 }
